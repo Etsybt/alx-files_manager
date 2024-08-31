@@ -46,6 +46,12 @@ class DBClient {
   async nbFiles() {
     return this.db.collection('files').countDocuments();
   }
+
+  // New method to retrieve a file
+  async getFile(query) {
+    const file = await this.db.collection('files').findOne(query);
+    return file;
+  }
 }
 
 const dbClient = new DBClient();
