@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { ObjectId } from 'mongodb';
 import redisClient from '../utils/redis';
 import dbClient from '../utils/db';
 
@@ -22,12 +23,22 @@ class FilesController {
     }
     if (type !== 'folder' && !data) return res.status(400).json({ error: 'Missing data' });
 
-    const parentFile = parentId !== 0 ? await dbClient.getFile({ _id: parentId }) : null;
-    if (parentId !== 0 && !parentFile) {
-      return res.status(400).json({ error: 'Parent not found' });
-    }
-    if (parentId !== 0 && parentFile.type !== 'folder') {
-      return res.status(400).json({ error: 'Parent is not a folder' });
+    let parentFile = null;
+    if (parentId !== 0) {
+      try {
+        // Convert parentId to ObjectId
+        const parentObjectId = new ObjectId(parentId);
+        parentFile = await dbClient.getFile({ _id: parentObjectId });
+      } catch (error) {
+        return res.status(400).json({ error: 'Invalid parentId format' });
+      }
+
+      if (!parentFile) {
+        return res.status(400).json({ error: 'Parent not found' });
+      }
+      if (parentFile.type !== 'folder') {
+        return res.status(400).json({ error: 'Parent is not a folder' });
+      }
     }
 
     const newFile = {
@@ -35,12 +46,19 @@ class FilesController {
       name,
       type,
       isPublic,
-      parentId,
+      parentId: parentId !== 0 ? new ObjectId(parentId) : 0,
     };
 
     if (type === 'folder') {
       const result = await dbClient.db.collection('files').insertOne(newFile);
-      return res.status(201).json({ id: result.insertedId, ...newFile });
+      return res.status(201).json({
+        id: result.insertedId,
+        userId,
+        name,
+        type,
+        isPublic,
+        parentId,
+      });
     }
 
     const folderPath = process.env.FOLDER_PATH || '/tmp/files_manager';
@@ -52,7 +70,14 @@ class FilesController {
     newFile.localPath = localPath;
 
     const result = await dbClient.db.collection('files').insertOne(newFile);
-    return res.status(201).json({ id: result.insertedId, ...newFile });
+    return res.status(201).json({
+      id: result.insertedId,
+      userId,
+      name,
+      type,
+      isPublic,
+      parentId,
+    });
   }
 }
 
